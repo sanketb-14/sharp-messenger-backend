@@ -28,10 +28,8 @@ const globalErrorHandler = (err, req, res, next) => {
   err.status = err.status || "error";
 
   let error = { ...err };
-  
   console.log(error);
-  if (error.name === "E_VALIDATION_ERROR") error = handleValidationErrorDB(error);
-
+  if (error.name === "ValidationError") error = handleValidationErrorDB(error);
 
   if (error.name === "JsonWebTokenError") {
     error = handleJWTError();

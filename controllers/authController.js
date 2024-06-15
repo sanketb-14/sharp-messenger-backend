@@ -1,25 +1,25 @@
 import prisma from "../DB/db.config.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import vine,{errors} from '@vinejs/vine'
+import vine, { errors } from "@vinejs/vine";
+import { promisify } from "util";
 import { registerSchema } from "../validator/authSchema.js";
-import { CustomErrorReporter } from "../validator/customErrorReporter.js"
+import { CustomErrorReporter } from "../validator/customErrorReporter.js";
 import { catchAsync } from "../utils/catchAsync.js";
 import AppError from "../utils/appError.js";
 
 const signToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN,
-    });
-  };
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN,
+  });
+};
 
-const createSendToken = (user,statusCode , req , res) => {
+const createSendToken = (user, statusCode, req, res) => {
   const token = signToken(user.id);
   const cookieOptions = {
-    expires: new Date(
-      Date.now() + process.env.JWT_COOKIE_EXPIRES_IN * 24 * 60 * 60 * 1000
-    ),
+    maxAge: 15 * 24 * 60 * 60 * 1000,
     httpOnly: true,
+    sameSite:"strict",
   };
   if (process.env.NODE_ENV === "production") cookieOptions.secure = true;
   res.cookie("jwt", token, cookieOptions);
@@ -31,50 +31,154 @@ const createSendToken = (user,statusCode , req , res) => {
       user,
     },
   });
+};
 
+async function hashPassword(password) {
+  const hashPassword = await bcrypt.hash(password, 12);
+  password = hashPassword;
+  return password;
 }
 
-async function hashPassword(password){
-  const hashPassword = await bcrypt.hash(password,12)
-  password = hashPassword
-  return password
-}
-
-export const signup = catchAsync(async(req,res,next) => {
-  const {username , email,password , password_confirmation} = req.body
-  if(!username || !email || !password || !password_confirmation){
-    return next(new AppError("All fields are required",400))
+export const signup = catchAsync(async (req, res, next) => {
+  const {
+    username,
+    email,
+    password,
+    password_confirmation,
+    fullName,
+    gender,
+   
+  } = req.body;
+  if (
+    !username ||
+    !email ||
+    !password ||
+    !password_confirmation ||
+    !fullName
+  ) {
+    return next(new AppError("All fields are required", 400));
   }
-  if(password!== password_confirmation){
-    return next(new AppError("Passwords do not match",400))
+  if (password !== password_confirmation) {
+    return next(new AppError("Passwords do not match", 400));
   }
   const user = await prisma.user.findUnique({
-    where:{
-      email:email
-    }
-
-  })
-  if(user){
-    return next(new AppError("User already exists",403))
+    where: {
+      email: email,
+    },
+  });
+  if (user) {
+    return next(new AppError("User already exists", 403));
   }
 
-  vine.errorReporter =() => new CustomErrorReporter
-  
-   
+  vine.errorReporter = () => new CustomErrorReporter();
 
-  const validator = vine.compile(registerSchema)
-  const output = await validator.validate(req.body)  
+  const validator = vine.compile(registerSchema);
+  const output = await validator.validate(req.body);
+
+  const boyProfilePic = `https://avatar.iran.liara.run/public/boy?username=${username}`;
+  const girlProfilePic = `https://avatar.iran.liara.run/public/girl?username=${username}`;
 
   const newUser = {
-    username:output.username,
-    email:output.email,
-    password:await hashPassword(output.password)
-
-  }
+    
+    username: output.username,
+    fullName,
+    email: output.email,
+    password: await hashPassword(output.password),
+    gender:gender,
+    profilePic:gender === "male"?boyProfilePic:girlProfilePic
+   
+  };
 
   const createdUser = await prisma.user.create({
-    data:newUser,
-    
-})
-  createSendToken(createdUser,201,req,res)
-})
+    data: newUser,
+  });
+  createSendToken(createdUser, 201, req, res);
+});
+
+export const login = catchAsync(async (req, res, next) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return next(new AppError("email and password are require", 401));
+  }
+  const user = await prisma.user.findUnique({
+    where: {
+      email: email,
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      password: true,
+    },
+  });
+
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return next(new AppError("Invalid email or password", 401));
+  }
+  user.password = undefined;
+  createSendToken(user, 200, req, res);
+});
+
+export const logout = catchAsync(async (req, res, next) => {
+  res.cookie("jwt", "loggedout", {
+    expires: new Date(Date.now() + 10 * 1000),
+    httpOnly: true,
+  });
+  res.status(200).json({ status: "success" });
+});
+
+export const protect = catchAsync(async (req, res, next) => {
+  // 1) Getting token and check of it's there
+  console.log(req.cookies);
+
+  let token =req.cookies.jwt;
+  // if (
+  //   req.headers.authorization &&
+  //   req.headers.authorization.startsWith("Bearer")
+  // ) {
+  //   token = req.headers.authorization.split(" ")[1] 
+  // }
+  // else{
+  //   token = req.cookies.jwt
+  // }
+
+  if (!token) {
+    return next(
+      new AppError("You are not logged in! Please log in to get access.", 401)
+    );
+  }
+
+  const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+  const currentUser = await prisma.user.findUnique({
+    where: {
+      id: decoded.id,
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+    },
+  });
+
+  if (!currentUser) {
+    return next(
+      new AppError(
+        "The user belonging to this token does no longer exist.",
+        401
+      )
+    );
+  }
+  req.user = currentUser;
+  next();
+});
+
+export const restrictTo = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return next(
+        new AppError("You do not have permission to perform this action.", 403)
+      );
+    }
+    next();
+  };
+};
