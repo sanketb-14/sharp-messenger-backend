@@ -24,56 +24,63 @@ export const sendMessage = catchAsync(async(req,res,next) => {
     const {chatId:receiverId} = req.params
     const senderId = req.user.id
 
-    // check if their is chat between them and their receiver
+   if(receiverId !== senderId) {
+     // check if their is chat between them and their receiver
 
-    let conversation = await prisma.conversation.findFirst({
-        where:{ participantIds:{
-            hasEvery:[senderId,receiverId]
-        }
-    }
+     let conversation = await prisma.conversation.findFirst({
+      where:{ participantIds:{
+          hasEvery:[senderId,receiverId]
+      }
+  }
+  })
+  if(!conversation){
+      conversation = await prisma.conversation.create({
+          data:{
+              participantIds:{set:[senderId,receiverId]
+          }
+          }
+      })
+  }
+
+  //if not found we create a new conversation
+
+  const newMessage = await prisma.message.create({
+      data:{
+          body:message,
+          senderId,
+          conversationId:conversation.id
+      }
+  })
+
+
+  //we connect message and conversation table 
+
+  if(newMessage){
+      conversation = await prisma.conversation.update({
+          where:{
+              id:conversation.id
+          },
+
+          data:{
+              messages:{
+                  connect:{
+                      id:newMessage.id
+                  }
+              }
+          }
+      })
+  }
+
+  // socket will be added
+
+  res.status(201).json(newMessage)
+
+   }
+   else{
+    res.status(404).json({
+      error:"user and receiver can't be same"
     })
-    if(!conversation){
-        conversation = await prisma.conversation.create({
-            data:{
-                participantIds:{set:[senderId,receiverId]
-            }
-            }
-        })
-    }
-
-    //if not found we create a new conversation
-
-    const newMessage = await prisma.message.create({
-        data:{
-            body:message,
-            senderId,
-            conversationId:conversation.id
-        }
-    })
-
-
-    //we connect message and conversation table 
-
-    if(newMessage){
-        conversation = await prisma.conversation.update({
-            where:{
-                id:conversation.id
-            },
-
-            data:{
-                messages:{
-                    connect:{
-                        id:newMessage.id
-                    }
-                }
-            }
-        })
-    }
-
-    // socket will be added
-
-    res.status(201).json(newMessage)
-
+   }
 
 })
 
