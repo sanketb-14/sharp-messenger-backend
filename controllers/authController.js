@@ -19,7 +19,7 @@ const createSendToken = (user, statusCode, req, res) => {
   const cookieOptions = {
     maxAge: 15 * 24 * 60 * 60 * 1000,
     httpOnly: true,
-    sameSite:"strict",
+    sameSite: "strict",
   };
   if (process.env.NODE_ENV === "production") cookieOptions.secure = true;
   res.cookie("jwt", token, cookieOptions);
@@ -40,22 +40,9 @@ async function hashPassword(password) {
 }
 
 export const signup = catchAsync(async (req, res, next) => {
-  const {
-    username,
-    email,
-    password,
-    password_confirmation,
-    fullName,
-    gender,
-   
-  } = req.body;
-  if (
-    !username ||
-    !email ||
-    !password ||
-    !password_confirmation ||
-    !fullName
-  ) {
+  console.log(req.body);
+  const { username, email, password, password_confirmation, gender } = req.body;
+  if (!username || !email || !password || !password_confirmation) {
     return next(new AppError("All fields are required", 400));
   }
   if (password !== password_confirmation) {
@@ -75,18 +62,21 @@ export const signup = catchAsync(async (req, res, next) => {
   const validator = vine.compile(registerSchema);
   const output = await validator.validate(req.body);
 
-  const boyProfilePic = `https://avatar.iran.liara.run/public/boy?username=${username}`;
-  const girlProfilePic = `https://avatar.iran.liara.run/public/girl?username=${username}`;
+  const boyProfilePic = `https://xsgames.co/randomusers/assets/avatars/male/${Math.floor(Math.random() * 100)}.jpg`;
+  const girlProfilePic = `https://xsgames.co/randomusers/assets/avatars/female/${Math.floor(Math.random() * 100)}.jpg`;
 
   const newUser = {
-    
     username: output.username,
-    fullName,
+    fullName: output.username,
     email: output.email,
     password: await hashPassword(output.password),
-    gender:gender,
-    profilePic:gender === "male"?boyProfilePic:girlProfilePic
-   
+    gender,
+
+    profilePic: !req.body.profilePic
+      ? gender === "male"
+        ? boyProfilePic
+        : girlProfilePic
+      : req.body.profilePic,
   };
 
   const createdUser = await prisma.user.create({
@@ -96,25 +86,70 @@ export const signup = catchAsync(async (req, res, next) => {
 });
 
 export const login = catchAsync(async (req, res, next) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return next(new AppError("email and password are require", 401));
+  const { email, password,profilePic } = req.body;
+  
+
+  if (req.body?.provider === "google") {
+    // Handle Google sign-in
+    const user = await prisma.user.findUnique({
+      where: { email: email },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        profilePic: true,
+      },
+    });
+
+    if (user) {
+      user.password = undefined;
+      createSendToken(user, 200, req, res);
+    } else {
+      // User doesn't exist, create a new user
+      const newUser = await prisma.user.create({
+        data: {
+          email: email,
+          username: email.split('@')[0], // Using email as username
+          fullName:email,
+          password: await hashPassword(email), // You might want to set a random 
+          profilePic,
+          gender:"male"
+        },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          profilePic: true,
+        },
+      });
+
+      createSendToken(newUser, 201, req, res);
+    }
+    return; // End the function here for Google sign-in
   }
+
+  // Rest of the code for regular email/password login
+  if (!email || !password) {
+    return next(new AppError("email and password are required", 401));
+  }
+
   const user = await prisma.user.findUnique({
-    where: {
-      email: email,
-    },
+    where: { email: email },
     select: {
       id: true,
       username: true,
       email: true,
       password: true,
+      profilePic: true,
     },
   });
+
+  
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return next(new AppError("Invalid email or password", 401));
   }
+
   user.password = undefined;
   createSendToken(user, 200, req, res);
 });
@@ -131,16 +166,16 @@ export const protect = catchAsync(async (req, res, next) => {
   // 1) Getting token and check of it's there
   console.log(req.cookies);
 
-  let token =req.cookies.jwt;
-  // if (
-  //   req.headers.authorization &&
-  //   req.headers.authorization.startsWith("Bearer")
-  // ) {
-  //   token = req.headers.authorization.split(" ")[1] 
-  // }
-  // else{
-  //   token = req.cookies.jwt
-  // }
+  let token = req.cookies.jwt;
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer")
+  ) {
+    token = req.headers.authorization.split(" ")[1]
+  }
+  else{
+    token = req.cookies.jwt
+  }
 
   if (!token) {
     return next(
@@ -182,3 +217,5 @@ export const restrictTo = (...roles) => {
     next();
   };
 };
+
+

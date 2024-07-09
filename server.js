@@ -9,8 +9,9 @@ import helmet from "helmet";
 import xss from "xss-clean";
 import cors from "cors";
 import "dotenv/config";
+import { app,server } from "./socket/socket.js";
 
-const app = express();
+// const app = express();
 
 // Global Middleware
 
@@ -18,7 +19,7 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: "*",
+    origin: "http://localhost:3000",
     credentials:true // Allow requests from any origin
   })
 );
@@ -30,23 +31,17 @@ app.use(xss());
 // Limit requests from same API
 
 const limiter = rateLimit({
-  max: 1000,
+  max: 10000,
   windowMs: 60 * 60 * 100,
   message: "Too many requests from this IP, please try again in an hour!",
 });
 app.use("/api", limiter);
 app.use(cookieParser());
 
-// app.use('/' , (req, res, next) =>{
-//   res.status(200).json({
-//     status:'success',
-//     message:'Welcome to the API'
-//   })
-// })
 
 app.use(express.json({ limit: "10kb" }));
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
   req.requestTime = new Date().toISOString();
@@ -59,6 +54,6 @@ app.use("/api/v1/chats", chatRoute);
 app.use(globalErrorHandler);
 
 const port = process.env.PORT || 4000;
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
