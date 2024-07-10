@@ -19,7 +19,7 @@ import { app,server } from "./socket/socket.js";
 app.use(helmet());
 app.use(
   cors({
-    origin: "https://sharp-messenger.vercel.app/",
+    origin: "https://sharp-messenger.vercel.app",
     credentials:true // Allow requests from any origin
   })
 );

@@ -7,6 +7,7 @@ export const server = http.createServer(app);
 export const io = new Server(server, {
   cors: {
     origin: "https://sharp-messenger.vercel.app",
+    credentials: true ,
     methods: ["GET", "POST"],
   },
 });
