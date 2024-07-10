@@ -9,6 +9,7 @@ export const io = new Server(server, {
     origin: ["https://sharp-messenger.vercel.app","https://localhost:3000"],
 
     methods: ["GET", "POST"],
+    credentials: true
   },
 });
 

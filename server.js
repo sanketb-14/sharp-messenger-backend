@@ -17,13 +17,18 @@ import { app,server } from "./socket/socket.js";
 
 //Set security HTTP Headers
 app.use(helmet());
-app.use(
-  cors({
-    origin: ["https://sharp-messenger.vercel.app","https://localhost:3000"],
-
-    credentials:true // Allow requests from any origin
-  })
-);
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || ["https://sharp-messenger.vercel.app", "https://localhost:3000"].indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
 
 // Prevent XSS attacks
 
