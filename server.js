@@ -19,7 +19,7 @@ import { app,server } from "./socket/socket.js";
 app.use(helmet());
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || ["https://sharp-messenger.vercel.app", "https://localhost:3000"].indexOf(origin) !== -1) {
+    if (!origin || ["https://sharp-messenger.vercel.app", "http://localhost:3000"].indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
